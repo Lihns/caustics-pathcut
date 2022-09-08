@@ -1,7 +1,3 @@
-#ifdef MYDEBUG
-#pragma GCC optimize("O0")
-#endif
-
 #pragma once
 #include <mitsuba/core/aabb.h>
 #include <mitsuba/core/spectrum.h>

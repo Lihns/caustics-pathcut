@@ -3,8 +3,9 @@
 #pragma GCC optimize("O0")
 #endif
 
+/* Wrapper class of the precomputation functions */
 class PathcutWrapper {
-    std::vector<SGShape> m_sgShapes;
+    std::vector<GuidedShape> m_sgShapes;
     float m_mergeAngleThreshold;
     float m_mergeDistThreshold;
 
@@ -31,7 +32,8 @@ public:
         m_newton = props.getBoolean("newton", true);
         m_maxDepth = props.getInteger("causticBounce", 3);
     }
-    void buildSpatioBounceTree(const Scene *scene, const Point &camPos, const Vector &camDir) {
+    void precomputePathCuts(const Scene *scene, const Point &camPos, const Vector &camDir) {
+        // Build scene hierarchy for path cut pruning.
         std::vector<PTree> ptrees;
         const auto &meshes = scene->getMeshes();
         int receiverID = 0;
@@ -50,16 +52,23 @@ public:
             }
         }
         std::cout << "guided shape num: " << receiverID << "\n";
-        Pathcut(m_sgShapes, scene, ptrees, camPos, camDir, 2, m_mergeAngleThreshold, m_mergeDistThreshold, m_sds, m_parallax, m_newton);
+
+        //Precomputation:
+        //  Finding leaf path cuts.
+        //  Folving for representative paths.
+        //  Approximating incident radiance distribution with Spherical Gaussians.
+        Precomputation(m_sgShapes, scene, ptrees, camPos, camDir, 2, m_mergeAngleThreshold, m_mergeDistThreshold, m_sds, m_parallax, m_newton);
         for (int i = 3; i < m_maxDepth; i++) {
-            Pathcut(m_sgShapes, scene, ptrees, camPos, camDir, i, m_mergeAngleThreshold, m_mergeDistThreshold, false, m_parallax, m_newton);
+            //for multiple bounces
+            Precomputation(m_sgShapes, scene, ptrees, camPos, camDir, i, m_mergeAngleThreshold, m_mergeDistThreshold, false, m_parallax, m_newton);
         }
         for (size_t i = 0; i < m_sgShapes.size(); i++) {
+
 #ifndef MYDEBUG
 #pragma omp parallel for schedule(dynamic)
 #endif
+            //process the GMMs for sampling.
             for (size_t j = 0; j < m_sgShapes[i].sgMixtures.size(); j++) {
-                // m_sgShapes[i].sgMixtures[j].merge(m_mergeAngleThreshold, m_mergeDistThreshold);
                 m_sgShapes[i].sgMixtures[j].normalizeForSampling();
                 m_sgShapes[i].sgMixtures[j].computeWeights();
             }

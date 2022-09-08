@@ -1,9 +1,21 @@
-// #define MYDEBUG
-// #define SINGLE_BOUNCE
+/*
+    This file is part of Mitsuba, a physically based rendering system.
 
-#ifdef MYDEBUG
-#pragma GCC optimize("O0")
-#endif
+    Copyright (c) 2007-2014 by Wenzel Jakob
+    Copyright (c) 2017 by ETH Zurich, Thomas Mueller.
+
+    Mitsuba is free software; you can redistribute it and/or modify
+    it under the terms of the GNU General Public License Version 3
+    as published by the Free Software Foundation.
+
+    Mitsuba is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program. If not, see <http://www.gnu.org/licenses/>.
+*/
 
 #include <mitsuba/core/plugin.h>
 #include <mitsuba/core/statistics.h>
@@ -23,10 +35,6 @@ private:
 
 public:
     PathcutGuidedPathTracer(const Properties &props) : MonteCarloIntegrator(props) {
-#ifdef MYDEBUG
-        std::cout << "debug\n";
-        std::cin.get();
-#endif
         pwrapper.initGuidingParams(props);
     }
 
@@ -52,7 +60,7 @@ public:
         Point camPos = trafo(Point(0.f));
         Vector camDir = trafo(Vector(0.f, 0.f, 1.f));
 
-        pwrapper.buildSpatioBounceTree(scene, camPos, camDir);
+        pwrapper.precomputePathCuts(scene, camPos, camDir);
 
         ref<ParallelProcess> proc = new BlockedRenderProcess(job,
                                                              queue, scene->getBlockSize());

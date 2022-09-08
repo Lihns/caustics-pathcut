@@ -1,9 +1,3 @@
-// #define MYDEBUG
-
-#ifdef MYDEBUG
-#pragma GCC optimize("O0")
-#endif
-
 #include <mitsuba/core/plugin.h>
 #include <mitsuba/core/statistics.h>
 #include <mitsuba/render/renderproc.h>
@@ -15,27 +9,15 @@ MTS_NAMESPACE_BEGIN
 
 class PathcutVisualizer : public MonteCarloIntegrator {
 private:
-    // std::unique_ptr<Pathcut> m_pwrapper;
-    // std::unique_ptr<STree> m_stree;
-    // std::vector<STree> m_sTrees;
-    // std::vector<std::vector<STree>> m_sTrees;
     PathcutWrapper pwrapper;
 
     Transform m_camTrafo;
     Point m_visualizerPos;
     Intersection m_its;
 
-    void initGuidingParams(const Properties &props) {
-        pwrapper.initGuidingParams(props);
-    }
-
 public:
     PathcutVisualizer(const Properties &props) : MonteCarloIntegrator(props) {
-#ifdef MYDEBUG
-        std::cout << "debug\n";
-        std::cin.get();
-#endif
-        initGuidingParams(props);
+        pwrapper.initGuidingParams(props);
         m_camTrafo = props.getTransform("camTrafo");
     }
 
@@ -66,7 +48,7 @@ public:
             return false;
         }
 
-        pwrapper.buildSpatioBounceTree(scene, camPos, camDir);
+        pwrapper.precomputePathCuts(scene, camPos, camDir);
 
         ref<ParallelProcess> proc;
         proc = new BlockedRenderProcess(job, queue, scene->getBlockSize());

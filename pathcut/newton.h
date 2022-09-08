@@ -6,6 +6,7 @@ struct VertInfo {
     std::array<float, 3> normal;
 };
 
+//hard coded Newton solver for one-bounce and two-bounce reflections.
 float solveOneBounce(VertInfo &reflVert, const std::array<VertInfo, 3> &triInfo,
                      const std::array<float, 3> &lightPos, const std::array<float, 3> &camPos, float errorThreshold);
 

@@ -5,8 +5,6 @@
 
 using namespace mitsuba;
 struct SG {
-    // static Spectrum piecewiseLinearApproximation() {
-    // }
     static SG product(const SG &g1, const SG &g2) {
         float lambda;
         Vector3 i_mean = weightedSumP(g1, g2, lambda);
@@ -18,25 +16,12 @@ struct SG {
         length = unnormalized.length();
         return normalize(unnormalized);
     }
-    // static Vector3 weightedSumP(const SG &g1, const SG &g2, const SG &g3, float &length) {
-    //     Vector3 unnormalized = g1.lambda * g1.p + g2.lambda * g2.p + g3.lambda * g3.p;
-    //     length = unnormalized.length();
-    //     assert(length > 0.f);
-    //     return normalize(unnormalized);
-    // }
     static SG sgLight(float radius, const Spectrum &intensity, const Vector3 &dir_unnromalized) {
         float length = dir_unnromalized.length();
         return SG(normalize(dir_unnromalized), 4 * pow(length / radius, 2), 2 * intensity);
     }
-    static SG sgDistantLight(const Vector3 &dir, float solidAngle, const Spectrum &intensity) {
-        return SG(dir, 4 * M_PI / solidAngle, 2 * intensity);
-    }
     static SG brdfSlice(const Normal &n, const Vector3 &o, float roughness, const BSDF *bsdf) {
         float cosThetaO = dot(o, n);
-        // if (cosThetaO < 0.f) {
-        //     return SG(Vector3(0.f),0.f,Spectrum(0.f));
-        // }
-        // const SG& ndf, float Mo
         float m2 = roughness * roughness;
         SG ndf(n, 2.f / m2, Spectrum(1.f) / (M_PI * m2));
         float lambda = ndf.lambda / (4.f * cosThetaO);

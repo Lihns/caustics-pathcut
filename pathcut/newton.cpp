@@ -10,6 +10,8 @@ using autodiff::real;
 using autodiff::Vector3real;
 using autodiff::VectorXreal;
 
+#define MAX_STEP 20
+
 float solveOneBounce(VertInfo &reflVert, const std::array<VertInfo, 3> &triInfo,
                      const std::array<float, 3> &lightPos_, const std::array<float, 3> &camPos_, float errorThreshold) {
     float minError = INFINITY;
@@ -35,15 +37,13 @@ float solveOneBounce(VertInfo &reflVert, const std::array<VertInfo, 3> &triInfo,
         wi = (lightPos - pos).normalized();
         wo = (camPos - pos).normalized();
         Vector3real h = (wi + wo).normalized();
-        // std::cout << "h:\n"
-        //           << h << std::endl;
         Vector3real result = normal - h;
         return result;
     };
 
     VectorXreal x(2);
     x.fill(1.0 / 3.0);
-    for (int iter = 0; iter < 20; iter++) {
+    for (int iter = 0; iter < MAX_STEP; iter++) {
         VectorXreal F;
 
         auto J = autodiff::jacobian(f, autodiff::wrt(x), autodiff::at(x), F);
@@ -98,8 +98,6 @@ float solveOneBounce(VertInfo &reflVert, const std::array<VertInfo, 3> &triInfo,
                 x[0] = 1 - t;
                 x[1] = t;
             }
-            iter = std::max(17, iter);
-            // return minError;
         }
 
         // auto maxCoeff = x_delta.maxCoeff();
@@ -176,7 +174,7 @@ float solveTwoBounce(VertInfo &reflVert1, VertInfo &reflVert2, const std::array<
     VectorXreal x(4);
     x.fill(1.0 / 3.0);
 
-    for (int iter = 0; iter < 20; iter++) {
+    for (int iter = 0; iter < MAX_STEP; iter++) {
 
         VectorXreal F;
 
@@ -269,7 +267,6 @@ float solveTwoBounce(VertInfo &reflVert1, VertInfo &reflVert2, const std::array<
                 x[2] = 1 - t;
                 x[3] = t;
             }
-            iter = std::max(18, iter);
         }
     }
     return minError;

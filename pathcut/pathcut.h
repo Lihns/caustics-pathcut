@@ -1,7 +1,3 @@
-// #define MYDEBUG
-#ifdef MYDEBUG
-#pragma GCC optimize("O0")
-#endif
 
 #pragma once
 #include <omp.h>
@@ -15,7 +11,6 @@
 using namespace mitsuba;
 
 struct IntervalPath {
-    // static PTree *ptree;
     struct Vert {
         const PNode *pnode;
         const TriMesh *mesh;
@@ -105,7 +100,6 @@ struct SGMixture {
             Vector lobeCenter = vert.sg.p;
             vert.parallaxInfo.parallaxDir(pos, lobeCenter);
             result += vert.sg.evaluate(lobeCenter, d);
-            // result += vert.sg.evaluate(d);
         }
         return result;
     }
@@ -142,14 +136,9 @@ struct SGMixture {
                 auto &merged = mergedSGs.back();
                 const auto &vert = sgLights[idx];
 
-                // float cosine = dot(merged.sg.p, vert.sg.p);
                 float dist = (merged.parallaxInfo.origin - vert.parallaxInfo.origin).length();
 
                 if (dist < mergeDistThreshold) {
-                    // float cosine = dot(merged.sg.p, vert.sg.p);
-                    // Vector p = normalize(merged.sg.p + vert.sg.p);
-                    // float lambda = std::min(merged.sg.lambda, 1 / (1 - std::cos((std::acos(cosine) + std::acos(-1 / merged.sg.lambda + 1) + std::acos(-1 / vert.sg.lambda + 1)) / 2)));
-                    // Spectrum c = (merged.sg.c / merged.sg.lambda + vert.sg.c / vert.sg.lambda) * lambda;
                     merged.sg.c += vert.sg.c;
                     merged.sg.lambda = std::min(merged.sg.lambda, vert.sg.lambda);
                     sgLights[idx] = sgLights.back();
@@ -241,14 +230,13 @@ struct SGMixture {
     }
 };
 
-struct SGShape {
-    std::vector<SGMixture> sgMixtures;
+
+struct GuidedShape {
+    std::vector<SGMixture> sgMixtures; //GMM cached in each triangle of the shape.
 };
 
-/*****************************************************************************/
-/********************************   pathcut   ********************************/
-/*****************************************************************************/
-class Pathcut {
+
+class Precomputation {
 private:
     // std::vector<SGLight> m_sgLights;
     int m_nBounce;
@@ -264,7 +252,7 @@ private:
     bool m_newton;
 
 public:
-    Pathcut(std::vector<SGShape> &sgShapes, const Scene *scene, const std::vector<PTree> &ptrees, const Point &camPos, const Vector &camDir, int bounce,
+    Precomputation(std::vector<GuidedShape> &sgShapes, const Scene *scene, const std::vector<PTree> &ptrees, const Point &camPos, const Vector &camDir, int bounce,
             float mergeAngleThreshold, float mergeDistThreshold,
             bool sds = false, bool parallax = true, bool newton = true) {
         m_scene = scene;
@@ -286,6 +274,7 @@ public:
     }
 
 private:
+    //construct root path cut for differnt types of emitters.
     std::vector<IntervalPath> emitterPaths(const std::vector<PTree> &ptrees, const Point &camPos, const Vector &camDir) const {
         std::vector<IntervalPath> roots;
 
@@ -342,7 +331,7 @@ private:
         }
         return roots;
     }
-    void computePathcuts(std::vector<SGShape> &sgShapes, const std::vector<PTree> &ptrees, const Point &camPos, const Vector &camDir, float mergeAngleThreshold, float mergeDistThreshold) {
+    void computePathcuts(std::vector<GuidedShape> &sgShapes, const std::vector<PTree> &ptrees, const Point &camPos, const Vector &camDir, float mergeAngleThreshold, float mergeDistThreshold) {
         // root path
         auto roots = emitterPaths(ptrees, camPos, camDir);
         std::cout << "root pathcuts: " << roots.size() << std::endl;
@@ -424,7 +413,7 @@ private:
             }
         }
     }
-    void findPathcuts(std::vector<SGShape> &sgShapes, const IntervalPath &root) {
+    void findPathcuts(std::vector<GuidedShape> &sgShapes, const IntervalPath &root) {
         std::stack<IntervalPath> pathStack;
         pathStack.push(root);
         // subdivide several times
@@ -442,7 +431,7 @@ private:
                     omp_set_lock(&m_lock);
                     m_pathcutCount++;
                     omp_unset_lock(&m_lock);
-                    if (solvePathcut(path, points, normals) && validateVisibility(points)) {
+                    if (solvePathcut(path, points, normals)) {
                         omp_set_lock(&m_lock);
                         m_validPathcutCount++;
                         omp_unset_lock(&m_lock);
@@ -648,28 +637,8 @@ private:
         }
         return true;
     }
-    bool validateVisibility(const std::vector<Point> &points) const {
-        return true;
-        for (size_t idx = 0; idx < points.size() - 1; idx++) {
-            const auto &curr = points[idx];
-            const auto &next = points[idx + 1];
 
-            Vector dir = next - curr;
-            auto len = dir.length();
-            if (len <= 0.f) {
-                return false;
-            }
-
-            dir /= len;
-            Ray r(curr, dir, 0.01, len - ShadowEpsilon, 0.f);
-            if (m_scene->rayIntersect(r)) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    void computeSGs(std::vector<SGShape> &sgShapes, const IntervalPath &intervalPath, const std::vector<Point> &points, const std::vector<Vector> &normals) {
+    void computeSGs(std::vector<GuidedShape> &sgShapes, const IntervalPath &intervalPath, const std::vector<Point> &points, const std::vector<Vector> &normals) {
         // approximate light transport with SG
         SG gli;
         if (intervalPath.lightType == 0) {
@@ -718,7 +687,7 @@ private:
             float d_o, hoU, hoV;
             ParallaxStruct parallaxInfo = m_parallax ? ParallaxStruct(reflPoint, lightPos, tangentFrame, reflFocalU, reflFocalV, d_o, hoU, hoV) : ParallaxStruct();
 
-            // shading point too close to image, consider reflector as plane
+            // shading point too close to the image, consider reflector as plane to avoid image flickering.
             float imageDistU = INFINITY, imageDistV = INFINITY;
             parallaxInfo.imageDist(recvPoint, imageDistU, imageDistV);
             if (imageDistU < 0.5f) {
@@ -733,30 +702,7 @@ private:
             SG reflBrdfSG = SG::brdfSlice(reflN, wo, reflPNode->maxRoughness, reflMesh->getBSDF());
             gli = SG::convolveApproximation(gli, reflBrdfSG, reflN);
             gli.p = -wo;
-            // if (!(gli.c.isValid() && std::isfinite(gli.lambda) && gli.lambda > 0) ||
-            //     gli.c.isZero()) {
-            //     return;
-            // }
-            // if (recvBounce.guided) {
-            //     auto &sgMixtures = sgShapes[recvMesh->getID()[0]].sgMixtures;
-            //     const auto &parent = recvPNode->parent;
-            //     if (parent) {
-            //         omp_set_lock(&m_lock);
-            //         putSG(sgMixtures, parent, {gli, parallaxInfo, 1});
-            //         omp_unset_lock(&m_lock);
-            //     } else {
-            //         omp_set_lock(&m_lock);
-            //         m_sgCount++;
-            //         sgMixtures[recvTriIdx].sgLights.push_back(
-            //             {gli, parallaxInfo, 1});
-            //         omp_unset_lock(&m_lock);
-            //     }
-            // }
-            // gli.c *= 10;
-            // SG region = SG::region(recvPoint, reflPoint, reflN, reflPNode->extent * reflPNode->extent / 2);
-            // SG product = SG::product(gli, region);
-            // gli.lambda = std::min(product.lambda, 50000.f);
-            // gli.c = product.c;
+            
             if (!(gli.c.isValid() && std::isfinite(gli.lambda) && gli.lambda > 0) ||
                 gli.c.isZero()) {
                 return;
@@ -766,6 +712,7 @@ private:
                 const auto &parent = recvPNode->parent;
                 if (parent) {
                     omp_set_lock(&m_lock);
+                    // SG "filtering": put SGs into neighboring triangles.
                     putSG(sgMixtures, parent, {gli, parallaxInfo});
                     omp_unset_lock(&m_lock);
                 } else {
@@ -782,7 +729,7 @@ private:
                 }
             }
             if (i < intervalPath.bounces.size() - 2) {
-                // isotropic curved mirror approximation
+                // using isotropic curved mirror approximation until the last bounce.
                 float focalAvg = (std::isinf(reflFocalU) || std::isinf(reflFocalV)) ? INFINITY : (reflFocalU + reflFocalV) / 2.f;
                 float nDotL = dot(reflN, wi);
                 float d_o1 = nDotL * lightDist,
@@ -791,11 +738,6 @@ private:
                 lightPos = reflPoint + lightDist * wo;
             }
         }
-
-        // gli.lambda /= 1 / r + 1;
-        // gli.c /= 1 / r + 1;
-        // gli.lambda *= min(imageDistU, imageDistV);
-        // gli.c *= r * r;
     }
     void putSG(std::vector<SGMixture> &sgMixtures, PNode *node, const SGLight &sg) {
         if (node->tri) {
@@ -814,28 +756,4 @@ private:
             }
         }
     }
-    // static Interval3D computeHalfV(const Interval3D &in, const Interval3D &out,
-    //                                int type, float etaIn, float etaOut) {
-    //     switch (type) {
-    //     case -1:
-    //         return (in + out).normalized();
-    //     case -2:
-    //         return -(in + out).normalized();
-    //     case 1:
-    //         return -(in * etaIn + out * etaOut).normalized();
-    //     }
-    // }
-
-    // static Interval3D refract(const Interval3D &wi, const Interval3D &n, float eta) {
-    //     Interval1D cosThetaI = wi.dot(n);
-    //     if (cosThetaI.vMin > 0)
-    //         eta = 1.0f / eta;
-
-    //     if (cosThetaI.vMax > 0) {
-    //         return Interval3D(Point(-1e10), Point(1e10));
-    //     }
-
-    //     Interval1D cosThetaTSqr = Interval1D(1.0f) - (Interval1D(1.0f) - cosThetaI * cosThetaI) * (eta * eta);
-    //     return n * (cosThetaI * eta - cosThetaTSqr.sqrt() * (signbit(cosThetaI.vMin) ? -1.f : 1.f)) - wi * eta;
-    // }
 };
